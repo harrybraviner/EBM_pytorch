@@ -1,4 +1,4 @@
-from collections import OrderedDict
+from collections import OrderedDict, deque
 
 import torch
 from torch.utils.data import DataLoader
@@ -52,6 +52,7 @@ def main(dataset_name: str,
          conv2_kernel_size: int,
          epochs: int,
          buffer_sample_probability: float,
+         buffer_size: int,
          alpha_l2: float,
          langevin_step_size: float,
          adam_learning_rate: float,
@@ -91,7 +92,7 @@ def main(dataset_name: str,
 
     # This buffer will store samples that we evolve by Langevin dynamics.
     # These are needed as the 'negative' samples in the gradient step.
-    sample_buffer = []
+    sample_buffer = deque(maxlen=buffer_size)
     # FIXME - can I replace this with a pytorch RNG that I get to seed?
     rng_buffer = np.random.RandomState(1234)
 
@@ -100,16 +101,16 @@ def main(dataset_name: str,
             # Sample from buffer or uniform distribution
             negative_images = torch.rand((batch_size, data_size_channels, data_size_x, data_size_y))
             buffer_sample_idx_batch = []
-            if len(sample_buffer) > 0:
-                use_buffer = rng_buffer.choice([True, False],
-                                               p=[buffer_sample_probability, 1.0 - buffer_sample_probability])
-                for i in range(batch_size):
-                    if use_buffer[i]:
-                        buffer_sample_idx = rng_buffer.choice(len(sample_buffer))
+            use_buffer = rng_buffer.choice([True, False],
+                                           p=[buffer_sample_probability, 1.0 - buffer_sample_probability])
+            for i in range(batch_size):
+                if use_buffer[i]:
+                    buffer_sample_idx = rng_buffer.choice(sample_buffer.maxlen)
+                    if buffer_sample_idx < len(sample_buffer):
                         negative_images[i, :, :, :] = sample_buffer[buffer_sample_idx]
                         buffer_sample_idx_batch.append(buffer_sample_idx)
-                    else:
-                        buffer_sample_idx_batch.append(None)
+                else:
+                    buffer_sample_idx_batch.append(None)
 
             # FIXME - execute in-place Langevin dynamics
             #  Use torch.no_grad
@@ -140,7 +141,8 @@ if __name__ == '__main__':
     parser.add_argument('--conv2-channels', type=int, default=20)
     parser.add_argument('--conv2-kernel-size', type=int, default=3)
     parser.add_argument('--epochs', type=int, default=5)
-    parser.add_argument('--buffer_sample_probability', type=float, default=0.95)
+    parser.add_argument('--buffer-sample-probability', type=float, default=0.95)
+    parser.add_argument('--buffer-size', type=int, default=10000)
     parser.add_argument('--alpha-l2', type=float, default=1.0)
     parser.add_argument('--langevin-step-size', type=float, default=10.0)
     parser.add_argument('--adam-learning-rate', type=float, default=1e-4)
