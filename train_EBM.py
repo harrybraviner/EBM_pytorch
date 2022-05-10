@@ -5,6 +5,41 @@ import torchvision
 from os import path
 
 
+def get_energy_network(
+        data_size_channels: int,
+        data_size_x: int,
+        data_size_y: int,
+        conv1_channels: int,
+        conv1_kernel_size: int,
+        conv2_channels: int,
+        conv2_kernel_size: int) -> nn.Module:
+
+    final_layer_size = (conv2_channels *
+                        (data_size_x - (conv1_kernel_size - 1) - (conv2_kernel_size - 1)) *
+                        (data_size_y - (conv1_kernel_size - 1) - (conv2_kernel_size - 1)))
+    energy_network: nn.Module = nn.Sequential(OrderedDict([
+        ('conv1', nn.Conv2d(
+            in_channels=data_size_channels,
+            out_channels=conv1_channels,
+            kernel_size=conv1_kernel_size
+        )),
+        ('relu1', nn.ReLU()),
+        ('conv2', nn.Conv2d(
+            in_channels=conv1_channels,
+            out_channels=conv2_channels,
+            kernel_size=conv2_kernel_size
+        )),
+        ('relu2', nn.ReLU()),
+        ('flatten', nn.Flatten()),
+        ('linear', nn.Linear(
+            in_features=final_layer_size,
+            out_features=1,
+        ))
+    ]))
+
+    return energy_network
+
+
 def main(dataset_name: str,
          batch_size: int,
          conv1_channels: int,
@@ -12,7 +47,7 @@ def main(dataset_name: str,
          conv2_channels: int,
          conv2_kernel_size: int):
 
-         # Get the dataset, downloading and caching it locally if necessary
+    # Get the dataset, downloading and caching it locally if necessary
     dataset_fn = {
         'mnist': torchvision.datasets.MNIST,
     }[dataset_name]
@@ -29,26 +64,15 @@ def main(dataset_name: str,
     data_size_channels, data_size_x, data_size_y = dataset_train[0][0].shape
 
     # Setup network
-    energy_network: nn.Module = nn.Sequential(OrderedDict([
-        ('conv1', nn.Conv2d(
-            in_channels=data_size_channels,
-            out_channels=conv1_channels,
-            kernel_size=conv1_kernel_size
-        )),
-        ('relu1', nn.ReLU()),
-        ('conv2', nn.Conv2d(
-            in_channels=conv1_channels,
-            out_channels=conv2_channels,
-            kernel_size=conv2_kernel_size
-        )),
-        ('relu2', nn.ReLU()),
-        ('flatten', nn.Flatten()),
-        ('linear', nn.Linear(
-            in_features=,
-            out_features=1,
-        ))
-    ]))
-
+    energy_network = get_energy_network(
+        data_size_channels=data_size_channels,
+        data_size_x=data_size_x,
+        data_size_y=data_size_y,
+        conv1_channels=conv1_channels,
+        conv1_kernel_size=conv1_kernel_size,
+        conv2_channels=conv2_channels,
+        conv2_kernel_size=conv2_kernel_size
+    )
 
 
 if __name__ == '__main__':
