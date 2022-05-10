@@ -6,6 +6,7 @@ from torch import nn, optim
 import torchvision
 from os import path
 import numpy as np
+from tqdm import tqdm
 
 
 def get_energy_network(
@@ -55,6 +56,7 @@ def main(dataset_name: str,
          buffer_size: int,
          alpha_l2: float,
          langevin_step_size: float,
+         langevin_gradient_clipping: float,
          adam_learning_rate: float,
          adam_beta1: float,
          adam_beta2: float):
@@ -66,12 +68,13 @@ def main(dataset_name: str,
 
     # FIXME - scaling of data to be between 0 and 1?
     data_path = path.join(path.expanduser('~'), 'data')
-    dataset_train = dataset_fn(path.join(data_path, f'{dataset_name}_root'), train=True, drop_last=True,
+    dataset_train = dataset_fn(path.join(data_path, f'{dataset_name}_root'), train=True,
                                download=True, transform=torchvision.transforms.ToTensor())
     dataset_valid = dataset_fn(path.join(data_path, f'{dataset_name}_root'), train=False,
                                download=True, transform=torchvision.transforms.ToTensor())
 
-    data_loader_train = DataLoader(dataset_train, batch_size=batch_size, shuffle=True, num_workers=8)
+    data_loader_train = DataLoader(dataset_train, batch_size=batch_size,
+                                   shuffle=True, drop_last=True, num_workers=8)
     data_loader_valid = DataLoader(dataset_valid, batch_size=batch_size, shuffle=False, num_workers=8)
 
     data_size_channels, data_size_x, data_size_y = dataset_train[0][0].shape
@@ -97,12 +100,13 @@ def main(dataset_name: str,
     rng_buffer = np.random.RandomState(1234)
 
     for epoch in range(epochs):
-        for positive_images, _ in iter(data_loader_train):
+        for positive_images, _ in tqdm(iter(data_loader_train)):
             # Sample from buffer or uniform distribution
             negative_images = torch.rand((batch_size, data_size_channels, data_size_x, data_size_y))
             buffer_sample_idx_batch = []
             use_buffer = rng_buffer.choice([True, False],
-                                           p=[buffer_sample_probability, 1.0 - buffer_sample_probability])
+                                           p=[buffer_sample_probability, 1.0 - buffer_sample_probability],
+                                           size=(batch_size,))
             for i in range(batch_size):
                 if use_buffer[i]:
                     buffer_sample_idx = rng_buffer.choice(sample_buffer.maxlen)
@@ -145,8 +149,11 @@ if __name__ == '__main__':
     parser.add_argument('--buffer-size', type=int, default=10000)
     parser.add_argument('--alpha-l2', type=float, default=1.0)
     parser.add_argument('--langevin-step-size', type=float, default=10.0)
+    parser.add_argument('--langevin-gradient-clipping', type=float, default=0.01)
     parser.add_argument('--adam-learning-rate', type=float, default=1e-4)
     parser.add_argument('--adam-beta1', type=float, default=0.0)
     parser.add_argument('--adam-beta2', type=float, default=0.999)
     args = parser.parse_args()
     args = vars(args)
+
+    main(**args)
