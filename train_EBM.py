@@ -1,8 +1,11 @@
 from collections import OrderedDict
+
+import torch
 from torch.utils.data import DataLoader
-from torch import nn
+from torch import nn, optim
 import torchvision
 from os import path
+import numpy as np
 
 
 def get_energy_network(
@@ -17,6 +20,7 @@ def get_energy_network(
     final_layer_size = (conv2_channels *
                         (data_size_x - (conv1_kernel_size - 1) - (conv2_kernel_size - 1)) *
                         (data_size_y - (conv1_kernel_size - 1) - (conv2_kernel_size - 1)))
+    # FIXME - seed RNGs for weights
     energy_network: nn.Module = nn.Sequential(OrderedDict([
         ('conv1', nn.Conv2d(
             in_channels=data_size_channels,
@@ -45,15 +49,23 @@ def main(dataset_name: str,
          conv1_channels: int,
          conv1_kernel_size: int,
          conv2_channels: int,
-         conv2_kernel_size: int):
+         conv2_kernel_size: int,
+         epochs: int,
+         buffer_sample_probability: float,
+         alpha_l2: float,
+         langevin_step_size: float,
+         adam_learning_rate: float,
+         adam_beta1: float,
+         adam_beta2: float):
 
     # Get the dataset, downloading and caching it locally if necessary
     dataset_fn = {
         'mnist': torchvision.datasets.MNIST,
     }[dataset_name]
 
+    # FIXME - scaling of data to be between 0 and 1?
     data_path = path.join(path.expanduser('~'), 'data')
-    dataset_train = dataset_fn(path.join(data_path, f'{dataset_name}_root'), train=True,
+    dataset_train = dataset_fn(path.join(data_path, f'{dataset_name}_root'), train=True, drop_last=True,
                                download=True, transform=torchvision.transforms.ToTensor())
     dataset_valid = dataset_fn(path.join(data_path, f'{dataset_name}_root'), train=False,
                                download=True, transform=torchvision.transforms.ToTensor())
@@ -74,6 +86,48 @@ def main(dataset_name: str,
         conv2_kernel_size=conv2_kernel_size
     )
 
+    # FIXME - how do I implement gradient clipping?
+    optimizer = optim.Adam(energy_network.parameters(), lr=adam_learning_rate, betas=(adam_beta1, adam_beta1))
+
+    # This buffer will store samples that we evolve by Langevin dynamics.
+    # These are needed as the 'negative' samples in the gradient step.
+    sample_buffer = []
+    # FIXME - can I replace this with a pytorch RNG that I get to seed?
+    rng_buffer = np.random.RandomState(1234)
+
+    for epoch in range(epochs):
+        for positive_images, _ in iter(data_loader_train):
+            # Sample from buffer or uniform distribution
+            negative_images = torch.rand((batch_size, data_size_channels, data_size_x, data_size_y))
+            buffer_sample_idx_batch = []
+            if len(sample_buffer) > 0:
+                use_buffer = rng_buffer.choice([True, False],
+                                               p=[buffer_sample_probability, 1.0 - buffer_sample_probability])
+                for i in range(batch_size):
+                    if use_buffer[i]:
+                        buffer_sample_idx = rng_buffer.choice(len(sample_buffer))
+                        negative_images[i, :, :, :] = sample_buffer[buffer_sample_idx]
+                        buffer_sample_idx_batch.append(buffer_sample_idx)
+                    else:
+                        buffer_sample_idx_batch.append(None)
+
+            # FIXME - execute in-place Langevin dynamics
+            #  Use torch.no_grad
+
+            # Write points (after Langevin evolution) back to the buffer
+            for i in range(batch_size):
+                sample_buffer.append(negative_images[i, :, :, :])
+
+            # Compute loss function and take gradient step
+            optimizer.zero_grad()
+            e_pos = energy_network(positive_images)
+            e_neg = energy_network(negative_images)
+            loss = (1/batch_size) * torch.sum(alpha_l2 * (e_pos**2 + e_neg**2) + e_pos - e_neg, dim=0)
+            loss.backward()
+            optimizer.step()
+
+        pass
+
 
 if __name__ == '__main__':
     import argparse
@@ -83,5 +137,14 @@ if __name__ == '__main__':
     parser.add_argument('--batch-size', type=int, default=16)
     parser.add_argument('--conv1-channels', type=int, default=20)
     parser.add_argument('--conv1-kernel-size', type=int, default=3)
+    parser.add_argument('--conv2-channels', type=int, default=20)
+    parser.add_argument('--conv2-kernel-size', type=int, default=3)
+    parser.add_argument('--epochs', type=int, default=5)
+    parser.add_argument('--buffer_sample_probability', type=float, default=0.95)
+    parser.add_argument('--alpha-l2', type=float, default=1.0)
+    parser.add_argument('--langevin-step-size', type=float, default=10.0)
+    parser.add_argument('--adam-learning-rate', type=float, default=1e-4)
+    parser.add_argument('--adam-beta1', type=float, default=0.0)
+    parser.add_argument('--adam-beta2', type=float, default=0.999)
     args = parser.parse_args()
     args = vars(args)
