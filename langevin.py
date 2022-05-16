@@ -5,11 +5,13 @@ from torch import nn
 def langevin_gradient_step(
         energy_function: nn.Module,
         batch_of_points: torch.Tensor,
-        step_size: float):
+        step_size: float,
+        rng: torch.Generator):
 
     # Energy descent operation.
     batch_of_points.requires_grad = True
-    batch_of_points.grad.zero_()    # Defend against previously accumulated gradients
+    if batch_of_points.grad is not None:
+        batch_of_points.grad.zero_()    # Defend against previously accumulated gradients
     energy = energy_function(batch_of_points)
     energy = torch.sum(energy)
     energy.backward()
@@ -19,6 +21,6 @@ def langevin_gradient_step(
     batch_of_points.grad.zero_()    # Defend against accidentally accumulating.
 
     # Noise operation
-
-    # FIXME - how do you compute gradients in here?
-    #  Remember that this whole thing is going to be wrapped in a no_grad block!
+    noise = torch.normal(mean=torch.zeros_like(batch_of_points),
+                         std=torch.sqrt(torch.Tensor([step_size])))
+    batch_of_points += noise
