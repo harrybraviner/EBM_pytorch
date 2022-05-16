@@ -85,7 +85,7 @@ def test_langevin_simple_dist():
                                               torch.zeros_like(x),
                                               (2.0/3.0)*(1.0 + x))
                                   )
-            return torch.log(-pdf)
+            return -torch.log(pdf)
 
     energy_module = EnergyModule()
 
@@ -96,4 +96,11 @@ def test_langevin_simple_dist():
             step_size=step_size,
             rng=g
         )
+
+    frac_in_interval = torch.sum((x > -0.5) & (x < +0.5)) / n_points
+
+    # FIXME - put assertion in here
+    # FIXME - why are there some NaNs in the final array?
+    print(x)
+    print(frac_in_interval)
 
