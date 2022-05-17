@@ -65,13 +65,14 @@ def main(dataset_name: str,
     # Setup PRNGs
     rng_langevin = torch.Generator()
     rng_langevin.manual_seed(1234)
+    rng_buffer = np.random.RandomState(5678)
 
     # Get the dataset, downloading and caching it locally if necessary
     dataset_fn = {
         'mnist': torchvision.datasets.MNIST,
     }[dataset_name]
 
-    # FIXME - scaling of data to be between 0 and 1?
+    # Note that the ToTensor transform scales the pixel intensities to lie in [0, 1]
     data_path = path.join(path.expanduser('~'), 'data')
     dataset_train = dataset_fn(path.join(data_path, f'{dataset_name}_root'), train=True,
                                download=True, transform=torchvision.transforms.ToTensor())
@@ -96,13 +97,11 @@ def main(dataset_name: str,
     )
 
     # FIXME - how do I implement gradient clipping?
-    optimizer = optim.Adam(energy_network.parameters(), lr=adam_learning_rate, betas=(adam_beta1, adam_beta1))
+    optimizer = optim.Adam(energy_network.parameters(), lr=adam_learning_rate, betas=(adam_beta1, adam_beta2))
 
     # This buffer will store samples that we evolve by Langevin dynamics.
     # These are needed as the 'negative' samples in the gradient step.
     sample_buffer = deque(maxlen=buffer_size)
-    # FIXME - can I replace this with a pytorch RNG that I get to seed?
-    rng_buffer = np.random.RandomState(1234)
 
     for epoch in range(epochs):
         for positive_images, _ in tqdm(iter(data_loader_train)):
@@ -149,7 +148,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset-name', type=str, default='mnist')
-    parser.add_argument('--batch-size', type=int, default=16)
+    parser.add_argument('--batch-size', type=int, default=128)
     parser.add_argument('--conv1-channels', type=int, default=20)
     parser.add_argument('--conv1-kernel-size', type=int, default=3)
     parser.add_argument('--conv2-channels', type=int, default=20)
