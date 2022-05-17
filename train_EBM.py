@@ -4,10 +4,31 @@ import torch
 from torch.utils.data import DataLoader
 from torch import nn, optim
 import torchvision
-from os import path
+from os import path, makedirs
 import numpy as np
 from tqdm import tqdm
 from langevin import langevin_gradient_step
+import matplotlib.pyplot as plt
+
+
+def make_plots(data: torch.Tensor) -> plt.Figure:
+    ncols = 3
+    nrows = (data.shape[0] // ncols) + int(bool(data.shape[0] % ncols))
+
+    fig, axs = plt.subplots(nrows=nrows, ncols=ncols)
+
+    # Remove tick labels and scales
+    for ax in [x for y in axs for x in y]:
+        ax.tick_params(left=False, right=False, bottom=False, top=False)
+        ax.axes.xaxis.set_ticklabels([])
+        ax.axes.yaxis.set_ticklabels([])
+
+    for i in range(data.shape[0]):
+        row = i // ncols
+        col = i - row*ncols
+        axs[row, col].imshow(data[i].squeeze())
+
+    return fig
 
 
 def get_energy_network(
@@ -60,12 +81,15 @@ def main(dataset_name: str,
          langevin_gradient_clipping: float,
          adam_learning_rate: float,
          adam_beta1: float,
-         adam_beta2: float):
+         adam_beta2: float,
+         output_dir: str):
 
     # Setup PRNGs
     rng_langevin = torch.Generator()
     rng_langevin.manual_seed(1234)
     rng_buffer = np.random.RandomState(5678)
+
+    makedirs(output_dir, exist_ok=True)
 
     # Get the dataset, downloading and caching it locally if necessary
     dataset_fn = {
@@ -140,7 +164,18 @@ def main(dataset_name: str,
             loss.backward()
             optimizer.step()
 
-        pass
+        # End of epoch, write some examples to disc
+        print(f'Completed epoch {epoch}')
+        samples_to_output = torch.rand((9, data_size_channels, data_size_x, data_size_y))
+        langevin_gradient_step(
+            energy_function=energy_network,
+            batch_of_points=samples_to_output,
+            step_size=langevin_step_size,
+            rng=rng_langevin
+        )
+        fig = make_plots(samples_to_output)
+        fig.savefig(path.join(output_dir, f'epoch_{epoch}_samples.png'))
+        plt.close(fig)
 
 
 if __name__ == '__main__':
@@ -162,6 +197,7 @@ if __name__ == '__main__':
     parser.add_argument('--adam-learning-rate', type=float, default=1e-4)
     parser.add_argument('--adam-beta1', type=float, default=0.0)
     parser.add_argument('--adam-beta2', type=float, default=0.999)
+    parser.add_argument('--output-dir', type=str, default='./output')
     args = parser.parse_args()
     args = vars(args)
 
