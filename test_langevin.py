@@ -94,7 +94,8 @@ def test_langevin_simple_dist():
             energy_function=energy_module,
             batch_of_points=x,
             step_size=step_size,
-            rng=g
+            rng=g,
+            gradient_clipping=1000
         )
 
     assert torch.any(torch.isnan(x)).item() is False

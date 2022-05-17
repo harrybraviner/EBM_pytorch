@@ -6,6 +6,7 @@ def langevin_gradient_step(
         energy_function: nn.Module,
         batch_of_points: torch.Tensor,
         step_size: float,
+        gradient_clipping: float,
         rng: torch.Generator):
 
     # Energy descent operation.
@@ -17,7 +18,16 @@ def langevin_gradient_step(
     energy.backward()
     batch_of_points.requires_grad = False   # Needed at this point since we're about to mutate this variable
 
-    batch_of_points -= (0.5*step_size) * batch_of_points.grad
+    clipped_grad = torch.where(
+        batch_of_points.grad < -gradient_clipping,
+        torch.full_like(batch_of_points.grad, fill_value=-gradient_clipping),
+        torch.where(
+            batch_of_points.grad > +gradient_clipping,
+            torch.full_like(batch_of_points.grad, fill_value=+gradient_clipping),
+            batch_of_points.grad
+        )
+    )
+    batch_of_points -= (0.5*step_size) * clipped_grad
     batch_of_points.grad.zero_()    # Defend against accidentally accumulating.
 
     # Noise operation

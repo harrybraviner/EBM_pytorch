@@ -3,6 +3,7 @@ from collections import OrderedDict, deque
 import torch
 from torch.utils.data import DataLoader
 from torch import nn, optim
+from torch.nn.utils.parametrizations import spectral_norm
 import torchvision
 from os import path, makedirs
 import numpy as np
@@ -45,23 +46,23 @@ def get_energy_network(
                         (data_size_y - (conv1_kernel_size - 1) - (conv2_kernel_size - 1)))
     # FIXME - seed RNGs for weights
     energy_network: nn.Module = nn.Sequential(OrderedDict([
-        ('conv1', nn.Conv2d(
+        ('conv1', spectral_norm(nn.Conv2d(
             in_channels=data_size_channels,
             out_channels=conv1_channels,
             kernel_size=conv1_kernel_size
-        )),
+        ))),
         ('relu1', nn.ReLU()),
-        ('conv2', nn.Conv2d(
+        ('conv2', spectral_norm(nn.Conv2d(
             in_channels=conv1_channels,
             out_channels=conv2_channels,
             kernel_size=conv2_kernel_size
-        )),
+        ))),
         ('relu2', nn.ReLU()),
         ('flatten', nn.Flatten()),
-        ('linear', nn.Linear(
+        ('linear', spectral_norm(nn.Linear(
             in_features=final_layer_size,
             out_features=1,
-        ))
+        )))
     ]))
 
     return energy_network
@@ -151,6 +152,7 @@ def main(dataset_name: str,
                     energy_function=energy_network,
                     batch_of_points=negative_images,
                     step_size=langevin_step_size,
+                    gradient_clipping=langevin_gradient_clipping,
                     rng=rng_langevin
                 )
 
@@ -174,6 +176,7 @@ def main(dataset_name: str,
                 energy_function=energy_network,
                 batch_of_points=samples_to_output,
                 step_size=langevin_step_size,
+                gradient_clipping=langevin_gradient_clipping,
                 rng=rng_langevin
             )
         fig = make_plots(samples_to_output)
@@ -191,7 +194,7 @@ if __name__ == '__main__':
     parser.add_argument('--conv1-kernel-size', type=int, default=3)
     parser.add_argument('--conv2-channels', type=int, default=20)
     parser.add_argument('--conv2-kernel-size', type=int, default=3)
-    parser.add_argument('--epochs', type=int, default=5)
+    parser.add_argument('--epochs', type=int, default=200)
     parser.add_argument('--buffer-sample-probability', type=float, default=0.95)
     parser.add_argument('--buffer-size', type=int, default=10000)
     parser.add_argument('--alpha-l2', type=float, default=1.0)
