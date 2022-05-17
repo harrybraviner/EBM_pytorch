@@ -22,5 +22,6 @@ def langevin_gradient_step(
 
     # Noise operation
     noise = torch.normal(mean=torch.zeros_like(batch_of_points),
-                         std=torch.sqrt(torch.Tensor([step_size])))
+                         std=torch.sqrt(torch.Tensor([step_size])),
+                         generator=rng)
     batch_of_points += noise

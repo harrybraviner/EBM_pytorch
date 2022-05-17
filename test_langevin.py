@@ -58,14 +58,14 @@ def test_langevin_simple_dist():
 
     n_points = 1000
     n_steps = 10000
-    step_size=1e-2
+    step_size = 1e-2
 
     # Seed a generator for repeatability
     g = torch.Generator()
     g.manual_seed(100)
 
     # Initialize sample points
-    x = torch.normal(torch.Tensor([0.0 for _ in range(n_points)]), std=5.0, generator=g)
+    x = torch.normal(torch.Tensor([0.0 for _ in range(n_points)]), std=2.0, generator=g)
 
     class EnergyModule(nn.Module):
         def __init__(self):
@@ -89,7 +89,8 @@ def test_langevin_simple_dist():
 
     energy_module = EnergyModule()
 
-    for _ in range(n_steps):
+    for i in range(n_steps):
+
         langevin_gradient_step(
             energy_function=energy_module,
             batch_of_points=x,
@@ -97,10 +98,7 @@ def test_langevin_simple_dist():
             rng=g
         )
 
+    assert torch.any(torch.isnan(x)).item() is False
     frac_in_interval = torch.sum((x > -0.5) & (x < +0.5)) / n_points
-
-    # FIXME - put assertion in here
-    # FIXME - why are there some NaNs in the final array?
-    print(x)
-    print(frac_in_interval)
-
+    assert frac_in_interval > 0.4
+    assert frac_in_interval < 0.5
