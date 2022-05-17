@@ -90,7 +90,6 @@ def test_langevin_simple_dist():
     energy_module = EnergyModule()
 
     for i in range(n_steps):
-
         langevin_gradient_step(
             energy_function=energy_module,
             batch_of_points=x,

@@ -7,6 +7,7 @@ import torchvision
 from os import path
 import numpy as np
 from tqdm import tqdm
+from langevin import langevin_gradient_step
 
 
 def get_energy_network(
@@ -60,6 +61,10 @@ def main(dataset_name: str,
          adam_learning_rate: float,
          adam_beta1: float,
          adam_beta2: float):
+
+    # Setup PRNGs
+    rng_langevin = torch.Generator()
+    rng_langevin.manual_seed(1234)
 
     # Get the dataset, downloading and caching it locally if necessary
     dataset_fn = {
@@ -116,8 +121,13 @@ def main(dataset_name: str,
                 else:
                     buffer_sample_idx_batch.append(None)
 
-            # FIXME - execute in-place Langevin dynamics
-            #  Use torch.no_grad
+            # Execute in-place Langevin dynamics on the negative samples
+            langevin_gradient_step(
+                energy_function=energy_network,
+                batch_of_points=negative_images,
+                step_size=langevin_step_size,
+                rng=rng_langevin
+            )
 
             # Write points (after Langevin evolution) back to the buffer
             for i in range(batch_size):
