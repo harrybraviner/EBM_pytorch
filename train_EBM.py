@@ -78,6 +78,7 @@ def main(dataset_name: str,
          buffer_size: int,
          alpha_l2: float,
          langevin_step_size: float,
+         langevin_num_steps: int,
          langevin_gradient_clipping: float,
          adam_learning_rate: float,
          adam_beta1: float,
@@ -145,12 +146,13 @@ def main(dataset_name: str,
                     buffer_sample_idx_batch.append(None)
 
             # Execute in-place Langevin dynamics on the negative samples
-            langevin_gradient_step(
-                energy_function=energy_network,
-                batch_of_points=negative_images,
-                step_size=langevin_step_size,
-                rng=rng_langevin
-            )
+            for _ in range(langevin_num_steps):
+                langevin_gradient_step(
+                    energy_function=energy_network,
+                    batch_of_points=negative_images,
+                    step_size=langevin_step_size,
+                    rng=rng_langevin
+                )
 
             # Write points (after Langevin evolution) back to the buffer
             for i in range(batch_size):
@@ -167,12 +169,13 @@ def main(dataset_name: str,
         # End of epoch, write some examples to disc
         print(f'Completed epoch {epoch}')
         samples_to_output = torch.rand((9, data_size_channels, data_size_x, data_size_y))
-        langevin_gradient_step(
-            energy_function=energy_network,
-            batch_of_points=samples_to_output,
-            step_size=langevin_step_size,
-            rng=rng_langevin
-        )
+        for _ in range(langevin_num_steps):
+            langevin_gradient_step(
+                energy_function=energy_network,
+                batch_of_points=samples_to_output,
+                step_size=langevin_step_size,
+                rng=rng_langevin
+            )
         fig = make_plots(samples_to_output)
         fig.savefig(path.join(output_dir, f'epoch_{epoch}_samples.png'))
         plt.close(fig)
@@ -193,6 +196,7 @@ if __name__ == '__main__':
     parser.add_argument('--buffer-size', type=int, default=10000)
     parser.add_argument('--alpha-l2', type=float, default=1.0)
     parser.add_argument('--langevin-step-size', type=float, default=10.0)
+    parser.add_argument('--langevin-num-steps', type=int, default=60)
     parser.add_argument('--langevin-gradient-clipping', type=float, default=0.01)
     parser.add_argument('--adam-learning-rate', type=float, default=1e-4)
     parser.add_argument('--adam-beta1', type=float, default=0.0)
