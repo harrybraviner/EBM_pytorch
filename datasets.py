@@ -17,4 +17,4 @@ class JointGaussianDataset(Dataset):
         return self._data.shape[0]
 
     def __getitem__(self, idx):
-        return self._data[idx, :], None
+        return self._data[idx, :], torch.Tensor([])

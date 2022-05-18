@@ -16,6 +16,7 @@ def langevin_gradient_step(
     energy = energy_function(batch_of_points)
     energy = torch.sum(energy)
     energy.backward()
+    # FIXME - check. At this point do parameters of energy_function have .grad none-zero?
     batch_of_points.requires_grad = False   # Needed at this point since we're about to mutate this variable
 
     clipped_grad = torch.where(

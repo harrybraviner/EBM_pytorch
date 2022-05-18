@@ -10,6 +10,7 @@ import numpy as np
 from tqdm import tqdm
 from langevin import langevin_gradient_step
 import matplotlib.pyplot as plt
+from datasets import JointGaussianDataset
 
 
 def make_plots(data: torch.Tensor) -> plt.Figure:
@@ -91,36 +92,56 @@ def main(dataset_name: str,
     rng_langevin.manual_seed(1234)
     rng_buffer = np.random.RandomState(5678)
 
+    data_path = path.join(path.expanduser('~'), 'data')
     makedirs(output_dir, exist_ok=True)
 
     # Get the dataset, downloading and caching it locally if necessary
-    dataset_fn = {
-        'mnist': torchvision.datasets.MNIST,
+    dataset_train = {
+        'mnist': torchvision.datasets.MNIST(path.join(data_path, f'{dataset_name}_root'), train=True,
+                                            download=True, transform=torchvision.transforms.ToTensor()),
+        'gaussian': JointGaussianDataset(length=10000, seed=12345),
     }[dataset_name]
 
     # Note that the ToTensor transform scales the pixel intensities to lie in [0, 1]
-    data_path = path.join(path.expanduser('~'), 'data')
-    dataset_train = dataset_fn(path.join(data_path, f'{dataset_name}_root'), train=True,
-                               download=True, transform=torchvision.transforms.ToTensor())
-    dataset_valid = dataset_fn(path.join(data_path, f'{dataset_name}_root'), train=False,
-                               download=True, transform=torchvision.transforms.ToTensor())
-
     data_loader_train = DataLoader(dataset_train, batch_size=batch_size,
                                    shuffle=True, drop_last=True, num_workers=8)
-    data_loader_valid = DataLoader(dataset_valid, batch_size=batch_size, shuffle=False, num_workers=8)
 
-    data_size_channels, data_size_x, data_size_y = dataset_train[0][0].shape
+    data_shape = dataset_train[0][0].shape
+    if len(data_shape) == 3:
+        data_size_channels, data_size_x, data_size_y = data_shape
 
-    # Setup network
-    energy_network = get_energy_network(
-        data_size_channels=data_size_channels,
-        data_size_x=data_size_x,
-        data_size_y=data_size_y,
-        conv1_channels=conv1_channels,
-        conv1_kernel_size=conv1_kernel_size,
-        conv2_channels=conv2_channels,
-        conv2_kernel_size=conv2_kernel_size
-    )
+        # Setup network
+        energy_network = get_energy_network(
+            data_size_channels=data_size_channels,
+            data_size_x=data_size_x,
+            data_size_y=data_size_y,
+            conv1_channels=conv1_channels,
+            conv1_kernel_size=conv1_kernel_size,
+            conv2_channels=conv2_channels,
+            conv2_kernel_size=conv2_kernel_size
+        )
+    elif len(data_shape) == 1:
+        (data_dim,) = data_shape
+
+        hidden_size_1 = 128
+        hidden_size_2 = 128
+
+        energy_network = nn.Sequential(OrderedDict([
+            ('linear_1', spectral_norm(nn.Linear(
+                in_features=data_dim,
+                out_features=hidden_size_1,
+            ))),
+            ('linear_2', spectral_norm(nn.Linear(
+                in_features=hidden_size_1,
+                out_features=hidden_size_2,
+            ))),
+            ('linear_3', spectral_norm(nn.Linear(
+                in_features=hidden_size_2,
+                out_features=1,
+            ))),
+        ]))
+    else:
+        raise ValueError(f'Unknown data shape: {data_shape}')
 
     # FIXME - how do I implement gradient clipping?
     optimizer = optim.Adam(energy_network.parameters(), lr=adam_learning_rate, betas=(adam_beta1, adam_beta2))
@@ -132,7 +153,7 @@ def main(dataset_name: str,
     for epoch in range(epochs):
         for positive_images, _ in tqdm(iter(data_loader_train)):
             # Sample from buffer or uniform distribution
-            negative_images = torch.rand((batch_size, data_size_channels, data_size_x, data_size_y))
+            negative_images = torch.rand((batch_size,) + tuple(data_shape))
             buffer_sample_idx_batch = []
             use_buffer = rng_buffer.choice([True, False],
                                            p=[buffer_sample_probability, 1.0 - buffer_sample_probability],
@@ -141,7 +162,10 @@ def main(dataset_name: str,
                 if use_buffer[i]:
                     buffer_sample_idx = rng_buffer.choice(sample_buffer.maxlen)
                     if buffer_sample_idx < len(sample_buffer):
-                        negative_images[i, :, :, :] = sample_buffer[buffer_sample_idx]
+                        if len(data_shape) == 3:
+                            negative_images[i, :, :, :] = sample_buffer[buffer_sample_idx]
+                        elif len(data_shape) == 1:
+                            negative_images[i, :] = sample_buffer[buffer_sample_idx]
                         buffer_sample_idx_batch.append(buffer_sample_idx)
                 else:
                     buffer_sample_idx_batch.append(None)
@@ -158,7 +182,10 @@ def main(dataset_name: str,
 
             # Write points (after Langevin evolution) back to the buffer
             for i in range(batch_size):
-                sample_buffer.append(negative_images[i, :, :, :])
+                if len(data_shape) == 3:
+                    sample_buffer.append(negative_images[i, :, :, :])
+                elif len(data_shape) == 1:
+                    sample_buffer.append(negative_images[i, :])
 
             # Compute loss function and take gradient step
             optimizer.zero_grad()
@@ -170,7 +197,7 @@ def main(dataset_name: str,
 
         # End of epoch, write some examples to disc
         print(f'Completed epoch {epoch}')
-        samples_to_output = torch.rand((9, data_size_channels, data_size_x, data_size_y))
+        samples_to_output = torch.rand((9,) + tuple(data_shape))
         for _ in range(langevin_num_steps):
             langevin_gradient_step(
                 energy_function=energy_network,
@@ -188,7 +215,7 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset-name', type=str, default='mnist')
+    parser.add_argument('--dataset-name', type=str, default='gaussian')
     parser.add_argument('--batch-size', type=int, default=128)
     parser.add_argument('--conv1-channels', type=int, default=20)
     parser.add_argument('--conv1-kernel-size', type=int, default=3)
