@@ -13,6 +13,19 @@ import matplotlib.pyplot as plt
 from datasets import JointGaussianDataset
 
 
+def make_single_plot(data: torch.Tensor) -> plt.Figure:
+
+    fig, ax = plt.subplots()
+
+    ax.plot(
+        [data[i, 0] for i in range(data.shape[0])],
+        [data[i, 1] for i in range(data.shape[0])],
+        '.'
+    )
+
+    return fig
+
+
 def make_plots(data: torch.Tensor) -> plt.Figure:
     ncols = 3
     nrows = (data.shape[0] // ncols) + int(bool(data.shape[0] % ncols))
@@ -99,7 +112,7 @@ def main(dataset_name: str,
     dataset_train = {
         'mnist': torchvision.datasets.MNIST(path.join(data_path, f'{dataset_name}_root'), train=True,
                                             download=True, transform=torchvision.transforms.ToTensor()),
-        'gaussian': JointGaussianDataset(length=10000, seed=12345),
+        'gaussian': JointGaussianDataset(length=50000, seed=12345),
     }[dataset_name]
 
     # Note that the ToTensor transform scales the pixel intensities to lie in [0, 1]
@@ -197,7 +210,10 @@ def main(dataset_name: str,
 
         # End of epoch, write some examples to disc
         print(f'Completed epoch {epoch}')
-        samples_to_output = torch.rand((9,) + tuple(data_shape))
+        if len(data_shape) == 3:
+            samples_to_output = torch.rand((9,) + tuple(data_shape))
+        else:
+            samples_to_output = torch.rand((100,) + tuple(data_shape))
         for _ in range(langevin_num_steps):
             langevin_gradient_step(
                 energy_function=energy_network,
@@ -206,7 +222,10 @@ def main(dataset_name: str,
                 gradient_clipping=langevin_gradient_clipping,
                 rng=rng_langevin
             )
-        fig = make_plots(samples_to_output)
+        if len(data_shape) == 3:
+            fig = make_plots(samples_to_output)
+        else:
+            fig = make_single_plot(samples_to_output)
         fig.savefig(path.join(output_dir, f'epoch_{epoch}_samples.png'))
         plt.close(fig)
 
