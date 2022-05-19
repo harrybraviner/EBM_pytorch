@@ -9,6 +9,12 @@ def langevin_gradient_step(
         gradient_clipping: float,
         rng: torch.Generator):
 
+    # Set the energy function to eval mode to avoid propagating gradients back into its parameters.
+    is_training_mode = energy_function.training
+    energy_function.eval()
+    for p in energy_function.parameters():
+        p.requires_grad = False
+
     # Energy descent operation.
     batch_of_points.requires_grad = True
     if batch_of_points.grad is not None:
@@ -16,7 +22,12 @@ def langevin_gradient_step(
     energy = energy_function(batch_of_points)
     energy = torch.sum(energy)
     energy.backward()
-    # FIXME - check. At this point do parameters of energy_function have .grad none-zero?
+
+    # Restore the state of the energy function
+    for p in energy_function.parameters():
+        p.requires_grad = True
+    energy_function.train(is_training_mode)
+
     batch_of_points.requires_grad = False   # Needed at this point since we're about to mutate this variable
 
     clipped_grad = torch.where(
