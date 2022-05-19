@@ -30,6 +30,7 @@ def langevin_gradient_step(
 
     batch_of_points.requires_grad = False   # Needed at this point since we're about to mutate this variable
 
+    # FIXME - these are all the same when I view them in the debugger!
     clipped_grad = batch_of_points.grad.detach().clamp(-gradient_clipping, +gradient_clipping)
     batch_of_points -= (0.5*step_size) * clipped_grad
     batch_of_points.grad.zero_()    # Defend against accidentally accumulating.
