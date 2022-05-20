@@ -10,7 +10,7 @@ import numpy as np
 from tqdm import tqdm
 from langevin import langevin_gradient_step
 import matplotlib.pyplot as plt
-from datasets import JointGaussianDataset
+from datasets import JointGaussianDataset, CircleDistribution
 
 
 def make_single_plot(data: torch.Tensor) -> plt.Figure:
@@ -113,6 +113,7 @@ def main(dataset_name: str,
         'mnist': torchvision.datasets.MNIST(path.join(data_path, f'{dataset_name}_root'), train=True,
                                             download=True, transform=torchvision.transforms.ToTensor()),
         'gaussian': JointGaussianDataset(length=50000, seed=12345),
+        'circle': CircleDistribution(length=50000, seed=12345),
     }[dataset_name]
 
     # Note that the ToTensor transform scales the pixel intensities to lie in [0, 1]
@@ -144,10 +145,12 @@ def main(dataset_name: str,
                 in_features=data_dim,
                 out_features=hidden_size_1,
             ))),
+            ('relu1', nn.ReLU()),
             ('linear_2', spectral_norm(nn.Linear(
                 in_features=hidden_size_1,
                 out_features=hidden_size_2,
             ))),
+            ('relu2', nn.ReLU()),
             ('linear_3', spectral_norm(nn.Linear(
                 in_features=hidden_size_2,
                 out_features=1,
@@ -166,7 +169,7 @@ def main(dataset_name: str,
     for epoch in range(epochs):
         for positive_images, _ in tqdm(iter(data_loader_train)):
             # Sample from buffer or uniform distribution
-            negative_images = torch.rand((batch_size,) + tuple(data_shape))
+            negative_images = torch.Tensor(*((batch_size,) + tuple(data_shape))).uniform_(-1.0, 1.0)
             buffer_sample_idx_batch = []
             use_buffer = rng_buffer.choice([True, False],
                                            p=[buffer_sample_probability, 1.0 - buffer_sample_probability],
@@ -211,9 +214,9 @@ def main(dataset_name: str,
         # End of epoch, write some examples to disc
         print(f'Completed epoch {epoch}')
         if len(data_shape) == 3:
-            samples_to_output = torch.rand((9,) + tuple(data_shape))
+            samples_to_output = torch.Tensor(*((9,) + tuple(data_shape))).uniform_(-1.0, 1.0)
         else:
-            samples_to_output = torch.rand((100,) + tuple(data_shape))
+            samples_to_output = torch.Tensor(*((100,) + tuple(data_shape))).uniform_(-1.0, 1.0)
         for _ in range(langevin_num_steps):
             langevin_gradient_step(
                 energy_function=energy_network,
@@ -234,7 +237,7 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset-name', type=str, default='gaussian')
+    parser.add_argument('--dataset-name', type=str, default='circle')
     parser.add_argument('--batch-size', type=int, default=128)
     parser.add_argument('--conv1-channels', type=int, default=20)
     parser.add_argument('--conv1-kernel-size', type=int, default=3)
@@ -245,7 +248,7 @@ if __name__ == '__main__':
     parser.add_argument('--buffer-size', type=int, default=10000)
     parser.add_argument('--alpha-l2', type=float, default=1.0)
     parser.add_argument('--langevin-step-size', type=float, default=10.0)
-    parser.add_argument('--langevin-num-steps', type=int, default=60)
+    parser.add_argument('--langevin-num-steps', type=int, default=120)
     parser.add_argument('--langevin-gradient-clipping', type=float, default=0.01)
     parser.add_argument('--adam-learning-rate', type=float, default=1e-4)
     parser.add_argument('--adam-beta1', type=float, default=0.0)
