@@ -1,11 +1,15 @@
 import torch
 from torch import nn
+from typing import Optional
 
 
 def langevin_gradient_step(
         energy_function: nn.Module,
+        elementwise_min: float,
+        elementwise_max: float,
         batch_of_points: torch.Tensor,
         step_size: float,
+        noise_sigma: Optional[float],
         gradient_clipping: float,
         rng: torch.Generator):
 
@@ -30,13 +34,16 @@ def langevin_gradient_step(
 
     batch_of_points.requires_grad = False   # Needed at this point since we're about to mutate this variable
 
-    # FIXME - these are all the same when I view them in the debugger!
     clipped_grad = batch_of_points.grad.detach().clamp(-gradient_clipping, +gradient_clipping)
     batch_of_points -= (0.5*step_size) * clipped_grad
     batch_of_points.grad.zero_()    # Defend against accidentally accumulating.
 
     # Noise operation
+    sigma = torch.Tensor([noise_sigma]) if noise_sigma is not None else torch.sqrt(torch.Tensor([step_size]))
     noise = torch.normal(mean=torch.zeros_like(batch_of_points),
-                         std=torch.Tensor([0.03]),
+                         std=torch.Tensor([sigma]),
                          generator=rng)
     batch_of_points += noise
+
+    # Restrict to lie within the domain
+    batch_of_points.clamp_(min=elementwise_min, max=elementwise_max)

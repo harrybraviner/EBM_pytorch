@@ -169,7 +169,7 @@ def main(dataset_name: str,
     for epoch in range(epochs):
         for positive_images, _ in tqdm(iter(data_loader_train)):
             # Sample from buffer or uniform distribution
-            negative_images = torch.Tensor(*((batch_size,) + tuple(data_shape))).uniform_(-1.0, 1.0)
+            negative_images = torch.Tensor(*((batch_size,) + tuple(data_shape))).uniform_(0.0, 1.0)
             buffer_sample_idx_batch = []
             use_buffer = rng_buffer.choice([True, False],
                                            p=[buffer_sample_probability, 1.0 - buffer_sample_probability],
@@ -190,8 +190,11 @@ def main(dataset_name: str,
             for _ in range(langevin_num_steps):
                 langevin_gradient_step(
                     energy_function=energy_network,
+                    elementwise_min=0.0,
+                    elementwise_max=1.0,
                     batch_of_points=negative_images,
                     step_size=langevin_step_size,
+                    noise_sigma=0.03,
                     gradient_clipping=langevin_gradient_clipping,
                     rng=rng_langevin
                 )
@@ -214,14 +217,17 @@ def main(dataset_name: str,
         # End of epoch, write some examples to disc
         print(f'Completed epoch {epoch}')
         if len(data_shape) == 3:
-            samples_to_output = torch.Tensor(*((9,) + tuple(data_shape))).uniform_(-1.0, 1.0)
+            samples_to_output = torch.Tensor(*((9,) + tuple(data_shape))).uniform_(0.0, 1.0)
         else:
             samples_to_output = torch.Tensor(*((100,) + tuple(data_shape))).uniform_(-1.0, 1.0)
         for _ in range(langevin_num_steps):
             langevin_gradient_step(
                 energy_function=energy_network,
+                elementwise_min=0.0,
+                elementwise_max=1.0,
                 batch_of_points=samples_to_output,
                 step_size=langevin_step_size,
+                noise_sigma=0.03,
                 gradient_clipping=langevin_gradient_clipping,
                 rng=rng_langevin
             )
@@ -237,7 +243,7 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset-name', type=str, default='circle')
+    parser.add_argument('--dataset-name', type=str, default='mnist')
     parser.add_argument('--batch-size', type=int, default=128)
     parser.add_argument('--conv1-channels', type=int, default=20)
     parser.add_argument('--conv1-kernel-size', type=int, default=3)
