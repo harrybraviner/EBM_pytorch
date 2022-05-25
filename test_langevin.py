@@ -92,8 +92,11 @@ def test_langevin_simple_dist():
     for i in range(n_steps):
         langevin_gradient_step(
             energy_function=energy_module,
+            elementwise_min=-2.0,
+            elementwise_max=+2.0,
             batch_of_points=x,
             step_size=step_size,
+            noise_sigma=None,
             rng=g,
             gradient_clipping=1000
         )
@@ -101,4 +104,7 @@ def test_langevin_simple_dist():
     assert torch.any(torch.isnan(x)).item() is False
     frac_in_interval = torch.sum((x > -0.5) & (x < +0.5)) / n_points
     assert frac_in_interval > 0.4
-    assert frac_in_interval < 0.5
+    assert frac_in_interval < 0.51
+
+    assert torch.any(x < -2.0).item() is False
+    assert torch.any(x > +2.0).item() is False
